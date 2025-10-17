@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { LandingPage } from "./components/LandingPage";
 import { LoginPage } from "./components/LoginPage";
@@ -17,9 +17,10 @@ import { ProgressTrackingPage } from "./components/ProgressTrackingPage";
 import { MyCertificatesPage } from "./components/MyCertificatesPage";
 import { CertificatePage } from "./components/CertificatePage";
 import { AnimatePresence } from "motion/react";
+import { Routes, Route, useNavigate } from "react-router-dom";
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState("landing");
+  const navigate = useNavigate();
 
   // Sample course data used for pages that expect a course prop
   const sampleCourse = {
@@ -30,173 +31,107 @@ export default function App() {
     level: "Intermediate",
   };
 
+  // helper callbacks to keep existing component props unchanged
+  const props = {
+    toLanding: () => navigate("/"),
+    toLogin: () => navigate("/login"),
+    toSignup: () => navigate("/signup"),
+    toDashboard: () => navigate("/dashboard"),
+    toCourseBuilder: () => navigate("/builder"),
+    toCourseOutline: (id?: number) => navigate(id ? `/course/${id}` : "/course"),
+    toLesson: (id?: number) => navigate(id ? `/course/${id}/lesson` : "/lesson"),
+    toProfile: () => navigate("/profile"),
+    toProgress: () => navigate("/progress"),
+    toCertificates: () => navigate("/certificates"),
+  };
+
   return (
     <ThemeProvider defaultTheme="light">
       <AnimatePresence mode="wait">
-        {currentPage === "landing" && (
-          <div key="landing">
-            <LandingPage
-              onGetStarted={() => setCurrentPage("course-builder")}
-              onLogin={() => setCurrentPage("login")}
-              onSignup={() => setCurrentPage("signup")}
-            />
-          </div>
-        )}
+        <Routes>
+          <Route
+            path="/"
+            element={<LandingPage onGetStarted={props.toCourseBuilder} onLogin={props.toLogin} onSignup={props.toSignup} />}
+          />
 
-        {currentPage === "login" && (
-          <div key="login">
-            <LoginPage
-              onBack={() => setCurrentPage("landing")}
-              onLogin={() => setCurrentPage("dashboard")}
-              onSignup={() => setCurrentPage("signup")}
-              onForgot={() => setCurrentPage("password-reset")}
-            />
-          </div>
-        )}
+          <Route
+            path="/login"
+            element={<LoginPage onBack={props.toLanding} onLogin={props.toDashboard} onSignup={props.toSignup} onForgot={() => navigate("/password-reset")} />}
+          />
 
-        {currentPage === "signup" && (
-          <div key="signup">
-            <SignupPage
-              onBack={() => setCurrentPage("landing")}
-              onSignup={() => setCurrentPage("dashboard")}
-              onLogin={() => setCurrentPage("login")}
-            />
-          </div>
-        )}
+          <Route
+            path="/signup"
+            element={<SignupPage onBack={props.toLanding} onSignup={props.toDashboard} onLogin={props.toLogin} />}
+          />
 
-        {currentPage === "password-reset" && (
-          <div key="password-reset">
-            <PasswordResetPage
-              onBack={() => setCurrentPage("login")}
-              onReset={() => setCurrentPage("login")}
-            />
-          </div>
-        )}
+          <Route
+            path="/password-reset"
+            element={<PasswordResetPage onBack={props.toLogin} onReset={props.toLogin} />}
+          />
 
-        {currentPage === "course-builder" && (
-          <div key="course-builder">
-            <CourseBuilderPage
-              onLogout={() => setCurrentPage("landing")}
-              onProfile={() => setCurrentPage("profile")}
-              onMyCourses={() => setCurrentPage("dashboard")}
-              onProgress={() => setCurrentPage("progress")}
-              onOpenQuiz={() => setCurrentPage("quiz")}
-              onOpenAssignments={() => setCurrentPage("assignments")}
-            />
-          </div>
-        )}
+          <Route
+            path="/builder"
+            element={<CourseBuilderPage onLogout={props.toLanding} onProfile={props.toProfile} onMyCourses={props.toDashboard} onProgress={props.toProgress} onOpenQuiz={() => navigate("/quiz")} onOpenAssignments={() => navigate("/assignments")} />}
+          />
 
-        {currentPage === "dashboard" && (
-          <div key="dashboard">
-            <DashboardPage
-              onLogout={() => setCurrentPage("landing")}
-              onProfile={() => setCurrentPage("profile")}
-              onCourseBuilder={() => setCurrentPage("course-builder")}
-              onCourseSelect={() => setCurrentPage("course-builder")}
-              onProgress={() => setCurrentPage("progress")}
-              onCertificates={() => setCurrentPage("my-certificates")}
-            />
-          </div>
-        )}
+          <Route
+            path="/dashboard"
+            element={<DashboardPage onLogout={props.toLanding} onProfile={props.toProfile} onCourseBuilder={props.toCourseBuilder} onCourseSelect={(course?: any) => props.toCourseOutline(course?.id)} onProgress={props.toProgress} onCertificates={props.toCertificates} />}
+          />
 
-        {currentPage === "course-outline" && (
-          <div key="course-outline">
-            <CourseOutlinePage
-              course={sampleCourse}
-              onBack={() => setCurrentPage("dashboard")}
-              onLogout={() => setCurrentPage("landing")}
-              onLessonSelect={() => setCurrentPage("lesson")}
-              onQuiz={() => setCurrentPage("quiz")}
-              onAssignment={() => setCurrentPage("assignments")}
-              onExport={() => setCurrentPage("export-share")}
-            />
-          </div>
-        )}
+          <Route
+            path="/course"
+            element={<CourseOutlinePage course={sampleCourse} onBack={props.toDashboard} onLogout={props.toLanding} onLessonSelect={() => navigate("/lesson")} onQuiz={() => navigate("/quiz")} onAssignment={() => navigate("/assignments")} onExport={() => navigate("/export-share")} />}
+          />
 
-        {currentPage === "lesson" && (
-          <div key="lesson">
-            <LessonContentPage
-              onBack={() => setCurrentPage("course-outline")}
-              onLogout={() => setCurrentPage("landing")}
-              onNext={() => setCurrentPage("course-outline")}
-            />
-          </div>
-        )}
+          <Route
+            path="/course/:id"
+            element={<CourseOutlinePage course={sampleCourse} onBack={props.toDashboard} onLogout={props.toLanding} onLessonSelect={() => navigate("/lesson")} onQuiz={() => navigate("/quiz")} onAssignment={() => navigate("/assignments")} onExport={() => navigate("/export-share")} />}
+          />
 
-        {currentPage === "quiz" && (
-          <div key="quiz">
-            <QuizPage
-              onBack={() => setCurrentPage("course-outline")}
-              onLogout={() => setCurrentPage("landing")}
-              onSubmit={() => setCurrentPage("course-outline")}
-            />
-          </div>
-        )}
+          <Route
+            path="/lesson"
+            element={<LessonContentPage onBack={() => navigate(-1)} onLogout={props.toLanding} onNext={() => navigate(-1)} />}
+          />
 
-        {currentPage === "assignments" && (
-          <div key="assignments">
-            <AssignmentsPage
-              onBack={() => setCurrentPage("course-outline")}
-              onLogout={() => setCurrentPage("landing")}
-              onSubmit={() => setCurrentPage("course-outline")}
-            />
-          </div>
-        )}
+          <Route
+            path="/quiz"
+            element={<QuizPage onBack={() => navigate(-1)} onLogout={props.toLanding} onSubmit={() => navigate(-1)} />}
+          />
 
-        {currentPage === "export-share" && (
-          <div key="export-share">
-            <ExportSharePage
-              course={sampleCourse}
-              onBack={() => setCurrentPage("course-outline")}
-              onLogout={() => setCurrentPage("landing")}
-            />
-          </div>
-        )}
+          <Route
+            path="/assignments"
+            element={<AssignmentsPage onBack={() => navigate(-1)} onLogout={props.toLanding} onSubmit={() => navigate(-1)} />}
+          />
 
-        {currentPage === "profile" && (
-          <div key="profile">
-            <EditProfilePage
-              onBack={() => setCurrentPage("dashboard")}
-              onSave={(updated) => {
-                // Could integrate with user state / API; for now navigate back to dashboard
-                console.log('Profile saved', updated);
-                setCurrentPage("dashboard");
-              }}
-              onLogout={() => setCurrentPage("landing")}
-              user={{ name: "John Doe", email: "john@example.com", avatar: "" }}
-            />
-          </div>
-        )}
+          <Route
+            path="/export-share"
+            element={<ExportSharePage course={sampleCourse} onBack={() => navigate(-1)} onLogout={props.toLanding} />}
+          />
 
-        {currentPage === "progress" && (
-          <div key="progress">
-            <ProgressTrackingPage
-              onBack={() => setCurrentPage("dashboard")}
-              onLogout={() => setCurrentPage("landing")}
-              onCertificate={() => setCurrentPage("certificate")}
-            />
-          </div>
-        )}
+          <Route
+            path="/profile"
+            element={<EditProfilePage onBack={props.toDashboard} onSave={() => props.toDashboard()} onLogout={props.toLanding} user={{ name: "John Doe", email: "john@example.com", avatar: "" }} />}
+          />
 
-        {currentPage === "my-certificates" && (
-          <div key="my-certificates">
-            <MyCertificatesPage
-              onBack={() => setCurrentPage("dashboard")}
-              onLogout={() => setCurrentPage("landing")}
-              onViewCertificate={() => setCurrentPage("certificate")}
-            />
-          </div>
-        )}
+          <Route
+            path="/progress"
+            element={<ProgressTrackingPage onBack={props.toDashboard} onLogout={props.toLanding} onCertificate={() => navigate("/certificate")} />}
+          />
 
-        {currentPage === "certificate" && (
-          <div key="certificate">
-            <CertificatePage
-              onBack={() => setCurrentPage("progress")}
-              onLogout={() => setCurrentPage("landing")}
-              onMyCertificates={() => setCurrentPage("my-certificates")}
-            />
-          </div>
-        )}
+          <Route
+            path="/certificates"
+            element={<MyCertificatesPage onBack={props.toDashboard} onLogout={props.toLanding} onViewCertificate={() => navigate("/certificate")} />}
+          />
+
+          <Route
+            path="/certificate"
+            element={<CertificatePage onBack={() => navigate("/progress")} onLogout={props.toLanding} onMyCertificates={() => navigate("/certificates")} />}
+          />
+
+          {/* Fallback route to landing */}
+          <Route path="*" element={<LandingPage onGetStarted={props.toCourseBuilder} onLogin={props.toLogin} onSignup={props.toSignup} />} />
+        </Routes>
       </AnimatePresence>
     </ThemeProvider>
   );
