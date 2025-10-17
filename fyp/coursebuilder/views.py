@@ -113,6 +113,56 @@ def get_youtube_thumbnail(video_url):
         pass
     return None
 
+def search_youtube_video(topic):
+    """
+    Search YouTube for a relevant educational video on the given topic
+    Returns: (video_url, thumbnail_url) or (None, None) if no results
+    """
+    try:
+        api_key = os.getenv("YOUTUBE_API_KEY")
+        if not api_key:
+            print("YouTube API key not found")
+            return None, None
+        
+        # Prepare search query - focus on educational content
+        search_query = f"{topic} tutorial education learning course"
+        
+        # Make API request
+        url = "https://www.googleapis.com/youtube/v3/search"
+        params = {
+            'part': 'snippet',
+            'q': search_query,
+            'type': 'video',
+            'maxResults': 1,
+            'key': api_key,
+            'videoDuration': 'medium',  # medium length videos (4-20 minutes)
+            'relevanceLanguage': 'en',
+            'videoEmbeddable': 'true',  # Only get embeddable videos
+            'videoSyndicated': 'true'   # Only get videos that can be played outside youtube.com
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        if data.get('items'):
+            video_id = data['items'][0]['id']['videoId']
+            thumbnail_url = data['items'][0]['snippet']['thumbnails']['high']['url']
+            
+            # Create embed URL
+            video_url = f"https://www.youtube.com/embed/{video_id}"
+            
+            print(f"Found YouTube video for topic: {topic}")
+            return video_url, thumbnail_url
+        
+        print(f"No YouTube results for topic: {topic}")
+        return None, None
+        
+    except Exception as e:
+        print(f"YouTube API error for topic '{topic}': {str(e)}")
+        return None, None
+
 def gen_outline(data):
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     
@@ -193,9 +243,9 @@ def get_weekly_detail(week_content, week_number, hours_per_day):
                 - You MUST use EXACTLY this format for each day, no variations:
                 
                 ## Day 1: [Specific Topic Title]
-                **Video Resource:** [Provide a relevant YouTube educational video URL or "No video" if not applicable]
+                **Topic:** [Clear, concise topic description for video search]
                 **Content:**
-                [Detailed learning content for 2 hours of study including:
+                [Detailed learning content for {hours_per_day} hours of study including:
                 - Clear learning objectives
                 - Theoretical explanations
                 - Practical examples
@@ -204,86 +254,82 @@ def get_weekly_detail(week_content, week_number, hours_per_day):
                 Make this comprehensive and actionable]
                 
                 ## Day 2: [Specific Topic Title]
-                **Video Resource:** [YouTube URL or "No video"]
+                **Topic:** [Clear topic description]
                 **Content:**
-                [Detailed content for 2 hours...]
+                [Detailed content for {hours_per_day} hours...]
                 
                 Continue this exact pattern for all 6 days.
                 
                 IMPORTANT:
                 - Each day MUST start with "## Day X: " exactly
-                - Each day MUST have "**Video Resource:**" on the next line
+                - Each day MUST have "**Topic:**" on the next line with a clear topic description
                 - Each day MUST have "**Content:**" on the line after that
                 - Content should be detailed enough for {hours_per_day} hours of study
                 - Include specific examples, exercises, and practical applications
                 - Make each day's content self-contained and comprehensive
                 - Ensure logical progression from day to day
+                - The topic line should be specific enough to find relevant educational videos
                 """,
             }
         ],
         model="llama3-8b-8192",
-        temperature=0.3,  # Lower temperature for more consistent formatting
+        temperature=0.3,
     )
 
     response = chat_completion.choices[0].message.content
-    print(f"Week {week_number} generated content:")  # Debug print
-    print(response)  # Debug print
+    print(f"Week {week_number} generated content:")
+    print(response)
     return response
 
-def parse_daily_content(weekly_detail):
-    """Parse the weekly detail into individual days with video URLs"""
+def parse_daily_content(weekly_detail, week_number):
+    """Parse the weekly detail into individual days and search for YouTube videos"""
     days = []
     
-    # More flexible pattern to handle variations
-    day_pattern = r"## Day\s*(\d+):\s*([^\n]+)(?:\n\*\*Video Resource:\*\*\s*([^\n]*))?(?:\n\*\*Content:\*\*\s*([\s\S]*?))(?=## Day\s*\d+:|$)"
+    # Pattern to extract day information
+    day_pattern = r"## Day\s*(\d+):\s*([^\n]+)(?:\n\*\*Topic:\*\*\s*([^\n]*))?(?:\n\*\*Content:\*\*\s*([\s\S]*?))(?=## Day\s*\d+:|$)"
     
     matches = re.findall(day_pattern, weekly_detail, re.IGNORECASE)
     
-    print(f"Found {len(matches)} days in weekly detail")  # Debug print
+    print(f"Found {len(matches)} days in weekly detail for week {week_number}")
     
     for match in matches:
         try:
             day_number = int(match[0])
             title = match[1].strip()
-            video_url = match[2].strip() if match[2] and match[2].strip() not in ["", "No video", "[No video]"] else ""
+            topic = match[2].strip() if match[2] else title
             content = match[3].strip() if match[3] else "Content not available"
+            
+            # Search for YouTube video using the topic
+            print(f"Searching YouTube video for: {topic}")
+            video_url, video_thumbnail = search_youtube_video(topic)
             
             # Clean up content - remove any remaining markdown artifacts
             content = re.sub(r'\*\*|\*|`', '', content)
             
-            # Convert YouTube URL to embed format if it's a watch URL
-            if video_url and ('youtube.com/watch?v=' in video_url or 'youtu.be/' in video_url):
-                if 'youtube.com/watch?v=' in video_url:
-                    video_id = video_url.split('youtube.com/watch?v=')[1].split('&')[0]
-                    video_url = f'https://www.youtube.com/embed/{video_id}'
-                elif 'youtu.be/' in video_url:
-                    video_id = video_url.split('youtu.be/')[1].split('?')[0]
-                    video_url = f'https://www.youtube.com/embed/{video_id}'
-            
-            # Get YouTube thumbnail if video exists
-            video_thumbnail = get_youtube_thumbnail(video_url) if video_url else ""
+            # Convert content to HTML
+            content_html = markdown.markdown(content)
             
             days.append({
                 'day_number': day_number,
                 'title': title,
-                'video_url': video_url,
-                'video_thumbnail': video_thumbnail,
-                'content': content
+                'video_url': video_url or "",
+                'video_thumbnail': video_thumbnail or "",
+                'content': content_html
             })
             
-            print(f"Parsed Day {day_number}: {title}")  # Debug print
+            print(f"Parsed Day {day_number}: {title} - Video: {bool(video_url)}")
             
         except Exception as e:
-            print(f"Error parsing day: {e}")  # Debug print
+            print(f"Error parsing day: {e}")
             continue
     
     # If no days were found with the main pattern, try alternative parsing
     if not days:
-        days = alternative_parse_daily_content(weekly_detail)
+        days = alternative_parse_daily_content(weekly_detail, week_number)
     
     return days
 
-def alternative_parse_daily_content(weekly_detail):
+def alternative_parse_daily_content(weekly_detail, week_number):
     """Alternative parsing method if the main one fails"""
     days = []
     
@@ -295,40 +341,27 @@ def alternative_parse_daily_content(weekly_detail):
         try:
             # Extract title (first line after day marker)
             lines = section.strip().split('\n')
-            title = lines[0].strip() if lines else f"Day {i} Content"
+            title = lines[0].strip() if lines else f"Week {week_number} Day {i}"
             
-            # Look for video URL in the content
-            video_url = ""
+            # Use title as topic for video search
+            print(f"Alternative search - YouTube video for: {title}")
+            video_url, video_thumbnail = search_youtube_video(title)
+            
+            # Collect content lines
             content_lines = []
-            
-            for line in lines:
-                if 'youtube.com' in line or 'youtu.be' in line:
-                    # Extract URL from line
-                    url_match = re.search(r'(https?://[^\s]+)', line)
-                    if url_match:
-                        video_url = url_match.group(1)
-                elif line.strip() and not line.startswith('**'):
+            for line in lines[1:]:  # Skip the title line
+                if line.strip() and not line.startswith('**'):
                     content_lines.append(line.strip())
             
-            content = '\n\n'.join(content_lines) if content_lines else "Detailed content for this day."
-            
-            # Convert YouTube URL to embed format
-            if video_url and ('youtube.com/watch?v=' in video_url or 'youtu.be/' in video_url):
-                if 'youtube.com/watch?v=' in video_url:
-                    video_id = video_url.split('youtube.com/watch?v=')[1].split('&')[0]
-                    video_url = f'https://www.youtube.com/embed/{video_id}'
-                elif 'youtu.be/' in video_url:
-                    video_id = video_url.split('youtu.be/')[1].split('?')[0]
-                    video_url = f'https://www.youtube.com/embed/{video_id}'
-            
-            video_thumbnail = get_youtube_thumbnail(video_url) if video_url else ""
+            content_text = '\n\n'.join(content_lines) if content_lines else f"Detailed content for {title}."
+            content_html = markdown.markdown(content_text)
             
             days.append({
                 'day_number': i,
-                'title': title,
-                'video_url': video_url,
-                'video_thumbnail': video_thumbnail,
-                'content': content
+                'title': f"Day {i}: {title}",
+                'video_url': video_url or "",
+                'video_thumbnail': video_thumbnail or "",
+                'content': content_html
             })
             
         except Exception as e:
@@ -340,17 +373,28 @@ def alternative_parse_daily_content(weekly_detail):
 def create_fallback_days(week_content, week_number, hours_per_day):
     """Create fallback day content when AI generation fails"""
     days = []
-    topics = week_content.split('\n')[:6]  # Take first 6 bullet points as topics
+    # Extract topics from week content
+    topics = []
+    for line in week_content.split('\n'):
+        if line.strip().startswith('-'):
+            topic = line.replace('-', '').strip()
+            if topic:
+                topics.append(topic)
+    
+    # Ensure we have exactly 6 topics
+    while len(topics) < 6:
+        topics.append(f"Week {week_number} Advanced Topic {len(topics) + 1}")
+    topics = topics[:6]
     
     for i in range(1, 7):
-        topic = topics[i-1].replace('-', '').strip() if i-1 < len(topics) else f"Week {week_number} Topic {i}"
+        topic = topics[i-1]
         
-        days.append({
-            'day_number': i,
-            'title': f"Day {i}: {topic}",
-            'video_url': "",
-            'video_thumbnail': "",
-            'content': f"""
+        # Search for YouTube video for this topic
+        print(f"Fallback search - YouTube video for: {topic}")
+        video_url, video_thumbnail = search_youtube_video(topic)
+        
+        content_html = f"""
+        <div class="fallback-content">
             <h5>Learning Objectives</h5>
             <ul>
                 <li>Understand the key concepts of {topic}</li>
@@ -377,10 +421,19 @@ def create_fallback_days(week_content, week_number, hours_per_day):
                 <li>Practice with online exercises</li>
                 <li>Join discussion forums for help</li>
             </ul>
-            """
+        </div>
+        """
+        
+        days.append({
+            'day_number': i,
+            'title': f"Day {i}: {topic}",
+            'video_url': video_url or "",
+            'video_thumbnail': video_thumbnail or "",
+            'content': content_html
         })
     
     return days
+
 @login_required
 def course_input(request):
     if request.method == "POST":
@@ -503,7 +556,7 @@ def week_detail(request, course_id, week_number):
     if not week.days.exists():
         try:
             weekly_detail = get_weekly_detail(week.content, week_number, course.hours_per_day)
-            days_data = parse_daily_content(weekly_detail)
+            days_data = parse_daily_content(weekly_detail, week_number)
             
             # If parsing failed, use fallback
             if not days_data:
