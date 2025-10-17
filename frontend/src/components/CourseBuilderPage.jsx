@@ -80,15 +80,18 @@ export function CourseBuilderPage({ onLogout, onProfile, onMyCourses, onProgress
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="gap-2 h-10">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-gradient-to-br from-chart-1 to-chart-2">
-                      JD
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="hidden md:inline">John Doe</span>
+                  <Button variant="ghost" size="icon" className="h-10">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback className="bg-gradient-to-br from-chart-1 to-chart-2">
+                        JD
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                {/* Make the visible name a separate button so clicks go directly to profile */}
+                <Button variant="ghost" className="hidden md:inline gap-2" onClick={onProfile}>
+                  John Doe
                 </Button>
-              </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
                   <div className="flex flex-col space-y-1">
