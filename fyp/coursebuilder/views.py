@@ -10,18 +10,16 @@ from groq import Groq
 import re
 import requests
 from urllib.parse import urlparse, parse_qs
-
 from .models import Course, Week, Day, UserProgress, User
 from .schema.schema import InputSchema
+from django.contrib.auth import authenticate, login, logout
+from django.contrib import messages
 
 load_dotenv()
 api_key = os.getenv("GROQ_API_KEY")
 
 def home(request):
     return HttpResponse("This is home page of course builder")
-
-from django.contrib.auth import authenticate, login, logout
-from django.contrib import messages
 
 def register_view(request):
     if request.method == "POST":
@@ -186,7 +184,7 @@ def gen_outline(data):
                 The outline generated should be in "{language}" and will span approximately "{duration}" months ({total_weeks} weeks).  
                 The student can study for {hours_per_day} hours per day.
 
-                ⚡ Important Instructions:
+                :zap: Important Instructions:
                 - The total number of weeks = {duration} * 4 = {total_weeks}.  
                 - Generate an outline that covers **all weeks without skipping**.  
                 - Use clear headings in the exact format:  
@@ -220,13 +218,59 @@ def gen_outline(data):
                 """,
             }
         ],
-        model="llama-3.1-8b-instant",
+        model="llama-3.3-70b-versatile",
         temperature=0.7,
     )
 
     response = chat_completion.choices[0].message.content
     return response
 
+def get_daily_detail(week_number, day_number, topic, hours_per_day):
+    """
+    Generate rich, non-repetitive, detailed daily content for a specific topic.
+    Includes examples, exercises, YouTube resources, and structure variety.
+    """
+    import random
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+    # Random teaching style for variation across days
+    teaching_style = random.choice([
+        "project-based learning",
+        "concept-first with examples",
+        "case-study focused",
+        "hands-on guided exercise",
+        "quiz and challenge style",
+        "visual explanation with analogies"
+    ])
+
+    prompt = f"""
+    Generate a {hours_per_day}-hour detailed learning content for Week {week_number}, Day {day_number}.
+    The topic of the day is: "{topic}".
+    
+    Output in **Markdown** using this exact structure:
+
+    ## Day {day_number}: {topic}
+    **Learning Objectives:**
+    - [3–5 concise, actionable goals]
+
+    **Theory (≈30%)**
+    Explain the core concepts clearly and progressively. Explain in lengthy detail.
+
+    **Practical (≈50%)**
+    Include coding examples, problem-solving tasks, that I can solve to get hands-on practice.
+    Mention specific tools or libraries if applicable.
+
+    **Review (≈20%)**
+    - Key takeaways
+    """
+
+    response = client.chat.completions.create(
+        messages=[{"role": "user", "content": prompt}],
+        model="llama-3.3-70b-versatile",
+        temperature=0.6,
+    )
+
+    return response.choices[0].message.content
 def get_weekly_detail(week_content, week_number, hours_per_day):
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     
@@ -239,7 +283,7 @@ def get_weekly_detail(week_content, week_number, hours_per_day):
                 
                 The student has {hours_per_day} hours available per day for study.
                 
-                ⚡ CRITICAL FORMATTING REQUIREMENTS:
+                :zap: CRITICAL FORMATTING REQUIREMENTS:
                 - You MUST use EXACTLY this format for each day, no variations:
                 
                 ## Day 1: [Specific Topic Title]
@@ -272,7 +316,7 @@ def get_weekly_detail(week_content, week_number, hours_per_day):
                 """,
             }
         ],
-        model="llama3-8b-8192",
+        model="llama-3.3-70b-versatile",
         temperature=0.3,
     )
 
@@ -555,24 +599,31 @@ def week_detail(request, course_id, week_number):
     # Generate daily content if not already generated
     if not week.days.exists():
         try:
-            weekly_detail = get_weekly_detail(week.content, week_number, course.hours_per_day)
-            days_data = parse_daily_content(weekly_detail, week_number)
+            # Extract 6 topics from weekly outline
+            topics = [line.strip("- ").strip() for line in week.content.split("\n") if line.strip().startswith("-")]
+            topics = topics[:6]  # Ensure max 6
+
+            for day_number, topic in enumerate(topics, start=1):
+                daily_content = get_daily_detail(week_number, day_number, topic, course.hours_per_day)
+                
+                # Extract YouTube search phrase (if present)
+                match = re.search(r"(?<=\*\*YouTube Search Phrase:\*\*)(.*)", daily_content)
+                search_phrase = match.group(1).strip() if match else topic
+                
+                # Search for YouTube video
+                video_url, video_thumbnail = search_youtube_video(search_phrase)
+
+                # Convert Markdown → HTML
+                content_html = markdown.markdown(daily_content, extensions=["extra", "nl2br", "sane_lists"])
             
-            # If parsing failed, use fallback
-            if not days_data:
-                days_data = create_fallback_days(week.content, week_number, course.hours_per_day)
-                messages.info(request, "Using enhanced content format for this week.")
-            
-            for day_data in days_data:
                 Day.objects.create(
                     week=week,
-                    day_number=day_data['day_number'],
-                    title=day_data['title'],
-                    content=day_data['content'],
-                    video_url=day_data['video_url'],
-                    video_thumbnail=day_data['video_thumbnail']
+                    day_number=day_number,
+                    title=f"Day {day_number}: {topic}",
+                    content=content_html,
+                    video_url=video_url or "",
+                    video_thumbnail=video_thumbnail or "",
                 )
-                
         except Exception as e:
             messages.error(request, f"Error generating daily content: {str(e)}")
             # Create fallback content even if AI fails completely
